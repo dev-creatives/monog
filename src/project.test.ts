@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { parseArgs } from "./cli.js";
-import { projectPackage, projectReadme, resolveSettings } from "./project.js";
+import { projectPackage, projectReadme, resolveSamplePackageUrl, resolveSettings } from "./project.js";
 
 test("uses the directory basename and master as defaults", () => {
   const settings = resolveSettings({ directory: "my-game" });
@@ -23,9 +23,15 @@ test("rejects invalid project metadata", () => {
 });
 
 test("parses new command options", () => {
-  assert.deepEqual(parseArgs(["new", "game", "--project-id", "game-id", "--title", "Game", "--engine-version", "master"]), {
-    directory: "game", projectId: "game-id", title: "Game", engineVersion: "master",
+  assert.deepEqual(parseArgs(["new", "game", "--project-id", "game-id", "--title", "Game", "--engine-version", "master", "--with-sample"]), {
+    directory: "game", projectId: "game-id", title: "Game", engineVersion: "master", withSample: true,
   });
+});
+
+test("resolves the official latest sample ZIP link", () => {
+  const html = '<a href="/download/studio/tyranoscript_v603b.zip">【最新版】Ver603bをダウンロード</a>';
+  assert.equal(resolveSamplePackageUrl(html), "https://tyrano.jp/download/studio/tyranoscript_v603b.zip");
+  assert.throws(() => resolveSamplePackageUrl("<a href=\"old.zip\">旧版</a>"), /latest TyranoScript ZIP/);
 });
 
 test("adds a reproducible local development server to generated projects", () => {

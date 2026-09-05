@@ -10,6 +10,7 @@ Options:
   --project-id <id>          TyranoScript projectID (default: directory name)
   --title <title>            Game title (default: project ID)
   --engine-version <ref>     Git revision of ShikemokuMK/tyranoscript (default: master)
+  --with-sample              Add the official sample novel data
   -h, --help                 Show this help`;
 
 function fail(message: string): never {
@@ -27,6 +28,10 @@ export function parseArgs(args: string[]): CreateProjectOptions {
   for (let index = 2; index < args.length; index += 1) {
     const option = args[index];
     if (option === "--help" || option === "-h") fail(usage);
+    if (option === "--with-sample") {
+      options.withSample = true;
+      continue;
+    }
     const value = args[index + 1];
     if (!value || value.startsWith("-")) fail(`Missing value for ${option}.`);
     if (option === "--project-id") options.projectId = value;
