@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { parseArgs } from "./cli.js";
-import { resolveSettings } from "./project.js";
+import { projectPackage, resolveSettings } from "./project.js";
 
 test("uses the directory basename and master as defaults", () => {
   const settings = resolveSettings({ directory: "my-game" });
@@ -26,4 +26,12 @@ test("parses new command options", () => {
   assert.deepEqual(parseArgs(["new", "game", "--project-id", "game-id", "--title", "Game", "--engine-version", "master"]), {
     directory: "game", projectId: "game-id", title: "Game", engineVersion: "master",
   });
+});
+
+test("adds a reproducible local development server to generated projects", () => {
+  const generated = projectPackage({ requestedRevision: "master", commit: "c8dbfd492afd3d79b0954fcf4477236f5c6c4830" });
+  assert.deepEqual(generated.scripts, { dev: "http-server . -p 8000 -c-1 -o" });
+  assert.deepEqual(generated.devDependencies, { "http-server": "14.1.1" });
+  assert.equal(generated.packageManager, "pnpm@12.3.4");
+  assert.deepEqual(generated.engines, { node: ">=26", pnpm: ">=12" });
 });

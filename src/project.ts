@@ -1,11 +1,16 @@
 import { cp, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import * as tar from "tar";
 
 const OWNER = "ShikemokuMK";
 const REPOSITORY = "tyranoscript";
 const REPOSITORY_URL = `https://github.com/${OWNER}/${REPOSITORY}`;
+const PROJECT_PNPM_VERSION = "12.3.4";
+const DEV_SERVER_VERSION = "14.1.1";
+const DEV_SERVER_SCRIPT = "http-server . -p 8000 -c-1 -o";
+const TEMPLATE_DIRECTORY = join(dirname(fileURLToPath(import.meta.url)), "../templates");
 
 export interface CreateProjectOptions {
   directory: string;
@@ -19,9 +24,23 @@ export interface CreateProjectResult {
   engineCommit: string;
 }
 
-interface ResolvedEngine {
+export interface ResolvedEngine {
   requestedRevision: string;
   commit: string;
+}
+
+export function projectPackage(engine: ResolvedEngine): Record<string, unknown> {
+  return {
+    private: true,
+    packageManager: `pnpm@${PROJECT_PNPM_VERSION}`,
+    engines: { node: ">=26", pnpm: ">=12" },
+    scripts: { dev: DEV_SERVER_SCRIPT },
+    devDependencies: { "http-server": DEV_SERVER_VERSION },
+    monog: {
+      engine: { repository: REPOSITORY_URL, requestedRevision: engine.requestedRevision, commit: engine.commit },
+      generatedAt: new Date().toISOString(),
+    },
+  };
 }
 
 export function resolveSettings(options: CreateProjectOptions): Required<CreateProjectOptions> {
@@ -92,10 +111,9 @@ async function writeProjectFiles(source: string, destination: string, projectId:
   await cp(join(source, "data", "system", "KeyConfig.js"), join(destination, "data", "system", "KeyConfig.js"));
   await replaceConfigMetadata(join(destination, "data", "system", "Config.tjs"), projectId, title);
   await writeFile(join(destination, "data", "scenario", "first.ks"), helloWorldScenario(title), "utf8");
-  await writeFile(join(destination, "package.json"), `${JSON.stringify({ private: true, monog: {
-    engine: { repository: REPOSITORY_URL, requestedRevision: engine.requestedRevision, commit: engine.commit },
-    generatedAt: new Date().toISOString(),
-  } }, null, 2)}\n`, "utf8");
+  await writeFile(join(destination, "package.json"), `${JSON.stringify(projectPackage(engine), null, 2)}\n`, "utf8");
+  await cp(join(TEMPLATE_DIRECTORY, "pnpm-lock.yaml"), join(destination, "pnpm-lock.yaml"));
+  await writeFile(join(destination, ".gitignore"), "node_modules/\n", "utf8");
 }
 
 export async function createProject(options: CreateProjectOptions): Promise<CreateProjectResult> {

@@ -37,6 +37,18 @@ pnpm setup
 node dist/cli.js new my-game
 ```
 
+## 生成したゲームを起動する
+
+`monog new` が生成するプロジェクトには、ローカル確認用の静的HTTPサーバーが含まれます。プロジェクトへ移動して、初回だけ依存関係をインストールしてください。
+
+```sh
+cd my-game
+pnpm install
+pnpm dev
+```
+
+`pnpm dev` は既定のブラウザーで <http://localhost:8000/> を開きます。サーバーは `Ctrl+C` で停止します。以後は `pnpm dev` だけで起動できます。`index.html` を `file://` で直接開かず、HTTPサーバー経由で確認してください。
+
 ## 使い方
 
 ```sh
@@ -63,6 +75,8 @@ monog new hello-monog --project-id hello_monog --title "Hello, monog!"
 ```text
 <directory>/
 ├── package.json
+├── pnpm-lock.yaml
+├── .gitignore
 ├── index.html
 ├── tyrano/                         # 指定リビジョンのTyranoエンジン
 │   └── ...
