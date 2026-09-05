@@ -19,7 +19,7 @@
 ## 初期 CLI インターフェース
 
 ```sh
-monog new <directory> [--engine <stable|latest|40桁SHA>]
+monog new <directory> [--engine <Gitリビジョン>]
 ```
 
 - `new` は新しいディレクトリを作成するコマンドとする。
@@ -29,11 +29,10 @@ monog new <directory> [--engine <stable|latest|40桁SHA>]
 ## エンジン取得とバージョン
 
 - エンジンは npm パッケージに同梱せず、公式 GitHub リポジトリ `ShikemokuMK/tyranoscript` から利用者環境へ取得する。
-- `stable` は既定値とする。公式配布 ZIP のエンジン部分とファイル照合済みの完全コミット SHA にだけ紐付ける。
-- `latest` は GitHub の `master` 先端を実行時に解決して使う。
-- SHA 指定は完全 40 桁のみ受け付ける。
-- 解決した完全 SHA、要求した参照、取得元リポジトリ、生成日時を生成先の `package.json` の `monog` 名前空間に記録する。
-- GitHub タグは現行公式 ZIP と対応付けられていないため、`stable` の対応表は monog 側で明示的に保守する。
+- `--engine` を省略した場合は、GitHub の `master` 先端を実行時に解決して使う。
+- `--engine` には、GitHubリポジトリでGitが解決できるリビジョン（短縮SHA、完全SHA、タグ、ブランチ名など）を受け付ける。
+- 解決した完全 SHA、要求したリビジョン、取得元リポジトリ、生成日時を生成先の `package.json` の `monog` 名前空間に記録する。
+- 初期版では `stable` のような monog 管理の固定エイリアスを提供しない。再現可能な生成には、解決済みの完全SHAを明示指定する。
 
 ## 生成するプロジェクト
 
@@ -46,11 +45,11 @@ monog new <directory> [--engine <stable|latest|40桁SHA>]
 
 - GitHubアーカイブは一時領域へ取得・展開し、検証完了後にのみ生成先へ配置する。失敗時に未完成のプロジェクトを残さない。
 - Node.js 20 以降をサポート対象とする。
-- リリース前に `stable` の候補コミットと公式 ZIP を照合し、使用 SHA・照合元 ZIP・検証結果をリポジトリで追跡する。
+- リリース前に、既定の `master` HEAD と公式配布 ZIP の対応を必要に応じて照合し、照合元 ZIP と検証結果をリポジトリで追跡する。
 
 ## 初期版の検証観点
 
-- `stable`、`latest`、SHA 指定の参照解決と入力検証。
+- 既定値（`master`）とGitリビジョン指定の参照解決・入力検証。
 - 既存生成先、ネットワーク失敗、不明 SHA、不正アーカイブ、必須ファイル欠落時の安全な失敗。
 - 生成物にサンプル素材が混入しないこと、`package.json` のメタデータが正しいこと。
 - 静的 HTTP サーバー経由で Hello World がブラウザ起動できること。
