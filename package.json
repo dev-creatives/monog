@@ -10,18 +10,18 @@
     "dist"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=26"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test dist/project.test.js"
   },
   "dependencies": {
-    "tar": "^7.5.11"
+    "tar": "^7.5.22"
   },
   "devDependencies": {
-    "@types/node": "^24.10.0",
-    "typescript": "^5.9.3"
+    "@types/node": "^26.4.1",
+    "typescript": "^6.0.3"
   },
-  "packageManager": "pnpm@10.20.0"
+  "packageManager": "pnpm@12.3.4"
 }
