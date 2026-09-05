@@ -43,6 +43,26 @@ export function projectPackage(engine: ResolvedEngine): Record<string, unknown> 
   };
 }
 
+export function projectReadme(title: string): string {
+  return `# ${title}
+
+TyranoScriptで作成するゲームプロジェクトです。
+
+## ローカルで起動する
+
+初回だけ依存関係をインストールします。
+
+\`\`\`sh
+pnpm install
+pnpm dev
+\`\`\`
+
+起動後、既定のブラウザーで http://localhost:8000/ が開きます。開かない場合も、同じURLにアクセスしてください。サーバーは \`Ctrl+C\` で停止します。
+
+\`index.html\` を \`file://\` で直接開かず、HTTPサーバー経由で確認してください。ブラウザーのセキュリティ制約により、ゲームが読み込むシナリオやアセットの一部が直接起動では正しく動作しない場合があります。
+`;
+}
+
 export function resolveSettings(options: CreateProjectOptions): Required<CreateProjectOptions> {
   const directory = resolve(options.directory);
   const inferredId = basename(directory);
@@ -114,6 +134,7 @@ async function writeProjectFiles(source: string, destination: string, projectId:
   await writeFile(join(destination, "package.json"), `${JSON.stringify(projectPackage(engine), null, 2)}\n`, "utf8");
   await cp(join(TEMPLATE_DIRECTORY, "pnpm-lock.yaml"), join(destination, "pnpm-lock.yaml"));
   await writeFile(join(destination, ".gitignore"), "node_modules/\n", "utf8");
+  await writeFile(join(destination, "README.md"), projectReadme(title), "utf8");
 }
 
 export async function createProject(options: CreateProjectOptions): Promise<CreateProjectResult> {

@@ -77,6 +77,7 @@ monog new hello-monog --project-id hello_monog --title "Hello, monog!"
 ├── package.json
 ├── pnpm-lock.yaml
 ├── .gitignore
+├── README.md                       # 起動方法を案内
 ├── index.html
 ├── tyrano/                         # 指定リビジョンのTyranoエンジン
 │   └── ...

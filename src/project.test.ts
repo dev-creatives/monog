@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { parseArgs } from "./cli.js";
-import { projectPackage, resolveSettings } from "./project.js";
+import { projectPackage, projectReadme, resolveSettings } from "./project.js";
 
 test("uses the directory basename and master as defaults", () => {
   const settings = resolveSettings({ directory: "my-game" });
@@ -34,4 +34,12 @@ test("adds a reproducible local development server to generated projects", () =>
   assert.deepEqual(generated.devDependencies, { "http-server": "14.1.1" });
   assert.equal(generated.packageManager, "pnpm@12.3.4");
   assert.deepEqual(generated.engines, { node: ">=26", pnpm: ">=12" });
+});
+
+test("writes local launch instructions for the generated game", () => {
+  const readme = projectReadme("Hello, monog!");
+  assert.match(readme, /^# Hello, monog!$/m);
+  assert.match(readme, /pnpm install/);
+  assert.match(readme, /pnpm dev/);
+  assert.match(readme, /http:\/\/localhost:8000\//);
 });
