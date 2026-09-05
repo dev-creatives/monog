@@ -1,0 +1,29 @@
+{
+  "name": "@dev-creatives/monog",
+  "version": "0.1.0",
+  "description": "Unofficial project management CLI for TyranoScript",
+  "type": "module",
+  "bin": {
+    "monog": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "templates"
+  ],
+  "engines": {
+    "node": ">=26"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test dist/project.test.js"
+  },
+  "dependencies": {
+    "tar": "^7.5.22",
+    "unzipper": "0.12.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.1",
+    "typescript": "^6.0.3"
+  },
+  "packageManager": "pnpm@12.3.4"
+}

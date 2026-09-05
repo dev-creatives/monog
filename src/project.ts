@@ -1,0 +1,269 @@
+import { cp, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { basename, dirname, join, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+import * as tar from "tar";
+
+const OWNER = "ShikemokuMK";
+const REPOSITORY = "tyranoscript";
+const REPOSITORY_URL = `https://github.com/${OWNER}/${REPOSITORY}`;
+const PROJECT_PNPM_VERSION = "12.3.4";
+const DEV_SERVER_VERSION = "14.1.1";
+const DEV_SERVER_SCRIPT = "http-server . -p 8000 -c-1 -o";
+const TEMPLATE_DIRECTORY = join(dirname(fileURLToPath(import.meta.url)), "../templates");
+const SAMPLE_PAGE_URL = "https://tyrano.jp/dl/v6";
+const require = createRequire(import.meta.url);
+
+interface ZipEntry {
+  path: string;
+  type: string;
+  buffer(): Promise<Buffer>;
+}
+
+interface Unzipper {
+  Open: { file(path: string): Promise<{ files: ZipEntry[] }> };
+}
+
+const unzipper = require("unzipper") as Unzipper;
+
+export interface CreateProjectOptions {
+  directory: string;
+  projectId?: string;
+  title?: string;
+  engineVersion?: string;
+  withSample?: boolean;
+}
+
+export interface CreateProjectResult {
+  path: string;
+  engineCommit: string;
+}
+
+export interface ResolvedEngine {
+  requestedRevision: string;
+  commit: string;
+}
+
+export interface ResolvedSample {
+  url: string;
+  sha256: string;
+}
+
+export function projectPackage(engine: ResolvedEngine, sample?: ResolvedSample): Record<string, unknown> {
+  const monog: Record<string, unknown> = {
+    engine: { repository: REPOSITORY_URL, requestedRevision: engine.requestedRevision, commit: engine.commit },
+    generatedAt: new Date().toISOString(),
+  };
+  if (sample) monog.sample = sample;
+  return {
+    private: true,
+    packageManager: `pnpm@${PROJECT_PNPM_VERSION}`,
+    engines: { node: ">=26", pnpm: ">=12" },
+    scripts: { dev: DEV_SERVER_SCRIPT },
+    devDependencies: { "http-server": DEV_SERVER_VERSION },
+    monog,
+  };
+}
+
+export function projectReadme(title: string): string {
+  return `# ${title}
+
+TyranoScriptで作成するゲームプロジェクトです。
+
+## ローカルで起動する
+
+初回だけ依存関係をインストールします。
+
+\`\`\`sh
+pnpm install
+pnpm dev
+\`\`\`
+
+起動後、既定のブラウザーで http://localhost:8000/ が開きます。開かない場合も、同じURLにアクセスしてください。サーバーは \`Ctrl+C\` で停止します。
+
+\`index.html\` を \`file://\` で直接開かず、HTTPサーバー経由で確認してください。ブラウザーのセキュリティ制約により、ゲームが読み込むシナリオやアセットの一部が直接起動では正しく動作しない場合があります。
+`;
+}
+
+export function resolveSettings(options: CreateProjectOptions): Required<CreateProjectOptions> {
+  const directory = resolve(options.directory);
+  const inferredId = basename(directory);
+  const projectId = options.projectId ?? inferredId;
+  const title = options.title ?? projectId;
+  const engineVersion = options.engineVersion ?? "master";
+
+  if (!/^[A-Za-z0-9_-]+$/.test(projectId)) {
+    throw new Error("Project ID must contain only ASCII letters, digits, hyphens, and underscores.");
+  }
+  if (/[\r\n"]/.test(title)) {
+    throw new Error("Title must not contain a newline or double quote.");
+  }
+  if (engineVersion.length === 0) throw new Error("Engine version must not be empty.");
+  return { directory, projectId, title, engineVersion, withSample: options.withSample ?? false };
+}
+
+async function fetchJson(url: string): Promise<unknown> {
+  const response = await fetch(url, { headers: { Accept: "application/vnd.github+json" } });
+  if (!response.ok) throw new Error(`GitHub could not resolve the engine revision (${response.status} ${response.statusText}).`);
+  return response.json();
+}
+
+async function fetchText(url: string): Promise<string> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Could not read the official TyranoScript download page (${response.status} ${response.statusText}).`);
+  return response.text();
+}
+
+export function resolveSamplePackageUrl(html: string, pageUrl = SAMPLE_PAGE_URL): string {
+  const patterns = [
+    /<a\b[^>]*href\s*=\s*["']([^"']+\.zip(?:\?[^"']*)?)["'][^>]*>[\s\S]*?最新版[\s\S]*?<\/a>/i,
+    /<a\b[^>]*>[\s\S]*?最新版[\s\S]*?href\s*=\s*["']([^"']+\.zip(?:\?[^"']*)?)["']/i,
+  ];
+  for (const pattern of patterns) {
+    const match = pattern.exec(html);
+    if (match) return new URL(match[1], pageUrl).href;
+  }
+  throw new Error("Could not find the latest TyranoScript ZIP link on the official download page.");
+}
+
+export async function resolveEngineRevision(requestedRevision: string): Promise<ResolvedEngine> {
+  const url = `https://api.github.com/repos/${OWNER}/${REPOSITORY}/commits/${encodeURIComponent(requestedRevision)}`;
+  const result = await fetchJson(url);
+  if (!result || typeof result !== "object" || !("sha" in result) || typeof result.sha !== "string" || !/^[0-9a-f]{40}$/i.test(result.sha)) {
+    throw new Error("GitHub returned an invalid commit for the engine revision.");
+  }
+  return { requestedRevision, commit: result.sha };
+}
+
+async function downloadArchive(commit: string, destination: string): Promise<void> {
+  const response = await fetch(`https://codeload.github.com/${OWNER}/${REPOSITORY}/tar.gz/${commit}`);
+  if (!response.ok) throw new Error(`Could not download the TyranoScript archive (${response.status} ${response.statusText}).`);
+  await writeFile(destination, Buffer.from(await response.arrayBuffer()));
+}
+
+async function downloadSampleArchive(url: string, destination: string): Promise<ResolvedSample> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Could not download the official TyranoScript sample archive (${response.status} ${response.statusText}).`);
+  const archive = Buffer.from(await response.arrayBuffer());
+  await writeFile(destination, archive);
+  return { url, sha256: createHash("sha256").update(archive).digest("hex") };
+}
+
+function sampleDataPrefix(entries: ZipEntry[]): string {
+  const prefixes = new Set<string>();
+  for (const entry of entries) {
+    const normalized = entry.path.replaceAll("\\", "/");
+    const parts = normalized.split("/");
+    if (parts.some((part) => part === "..") || normalized.startsWith("/")) throw new Error("The sample ZIP contains an unsafe path.");
+    const dataIndex = parts.indexOf("data");
+    if (dataIndex >= 0) prefixes.add(parts.slice(0, dataIndex + 1).join("/"));
+  }
+  if (prefixes.size !== 1) throw new Error("The sample ZIP has an unexpected directory layout.");
+  return [...prefixes][0];
+}
+
+export async function copySampleData(archivePath: string, destination: string): Promise<void> {
+  const directory = await unzipper.Open.file(archivePath);
+  const prefix = sampleDataPrefix(directory.files);
+  const prefixWithSlash = `${prefix}/`;
+  const copied = new Set<string>();
+  for (const entry of directory.files) {
+    if (entry.type !== "File" || !entry.path.startsWith(prefixWithSlash)) continue;
+    const relative = entry.path.slice(prefixWithSlash.length).replaceAll("\\", "/");
+    if (!relative || relative.split("/").some((part) => part === "..") || relative.startsWith("/") || relative.split("/").includes(".DS_Store")) continue;
+    if (copied.has(relative)) throw new Error(`The sample ZIP contains a duplicate path: ${relative}`);
+    copied.add(relative);
+    const target = join(destination, "data", ...relative.split("/"));
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, await entry.buffer());
+  }
+  if (!copied.has("system/Config.tjs")) throw new Error("The sample ZIP does not contain data/system/Config.tjs.");
+}
+
+async function projectSourceRoot(extractionDirectory: string): Promise<string> {
+  const entries = await readdir(extractionDirectory, { withFileTypes: true });
+  const directories = entries.filter((entry) => entry.isDirectory());
+  if (directories.length !== 1) throw new Error("The TyranoScript archive has an unexpected directory layout.");
+  return join(extractionDirectory, directories[0].name);
+}
+
+async function replaceConfigMetadata(configPath: string, projectId: string, title: string): Promise<void> {
+  const config = await readFile(configPath, "utf8");
+  const withId = config.replace(/^\s*;projectID\s*=.*$/m, `;projectID = ${projectId};`);
+  const withTitle = withId.replace(/^\s*;System\.title\s*=.*$/m, `;System.title = "${title}";`);
+  if (withTitle === config || !/;projectID\s*=/.test(config) || !/;System\.title\s*=/.test(config)) {
+    throw new Error("The TyranoScript Config.tjs template is missing projectID or System.title.");
+  }
+  await writeFile(configPath, withTitle, "utf8");
+}
+
+function helloWorldScenario(title: string): string {
+  return `; Generated by monog\n[title name="${title}"]\n[layopt layer="message" visible="true"]\n\nHello, World!\n[s]\n`;
+}
+
+async function writeProjectFiles(source: string, destination: string, projectId: string, title: string, engine: ResolvedEngine, sampleArchive?: { path: string; metadata: ResolvedSample }): Promise<void> {
+  await cp(join(source, "tyrano"), join(destination, "tyrano"), { recursive: true, errorOnExist: true });
+  await mkdir(join(destination, "data", "system"), { recursive: true });
+  await mkdir(join(destination, "data", "scenario"), { recursive: true });
+  await cp(join(source, "index.html"), join(destination, "index.html"));
+  await cp(join(source, "data", "system", "Config.tjs"), join(destination, "data", "system", "Config.tjs"));
+  await cp(join(source, "data", "system", "KeyConfig.js"), join(destination, "data", "system", "KeyConfig.js"));
+  await replaceConfigMetadata(join(destination, "data", "system", "Config.tjs"), projectId, title);
+  await writeFile(join(destination, "data", "scenario", "first.ks"), helloWorldScenario(title), "utf8");
+  if (sampleArchive) {
+    await copySampleData(sampleArchive.path, destination);
+    await replaceConfigMetadata(join(destination, "data", "system", "Config.tjs"), projectId, title);
+  }
+  await writeFile(join(destination, "package.json"), `${JSON.stringify(projectPackage(engine, sampleArchive?.metadata), null, 2)}\n`, "utf8");
+  await cp(join(TEMPLATE_DIRECTORY, "pnpm-lock.yaml"), join(destination, "pnpm-lock.yaml"));
+  await writeFile(join(destination, ".gitignore"), "node_modules/\n", "utf8");
+  await writeFile(join(destination, "README.md"), projectReadme(title), "utf8");
+}
+
+export async function createProject(options: CreateProjectOptions): Promise<CreateProjectResult> {
+  const settings = resolveSettings(options);
+  try {
+    await stat(settings.directory);
+    throw new Error(`Output directory already exists: ${settings.directory}`);
+  } catch (error: unknown) {
+    if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) throw error;
+  }
+
+  const engine = await resolveEngineRevision(settings.engineVersion);
+  const parent = dirname(settings.directory);
+  await mkdir(parent, { recursive: true });
+  const temporary = await mkdtemp(join(parent, ".monog-"));
+  const archive = join(await mkdtemp(join(tmpdir(), "monog-archive-")), "tyranoscript.tar.gz");
+  const archiveDirectory = dirname(archive);
+  let sampleArchive: { path: string; metadata: ResolvedSample } | undefined;
+  let sampleArchiveDirectory: string | undefined;
+
+  try {
+    await downloadArchive(engine.commit, archive);
+    if (settings.withSample) {
+      const page = await fetchText(SAMPLE_PAGE_URL);
+      const url = resolveSamplePackageUrl(page);
+      sampleArchiveDirectory = await mkdtemp(join(tmpdir(), "monog-sample-"));
+      const path = join(sampleArchiveDirectory, "sample.zip");
+      sampleArchive = { path, metadata: await downloadSampleArchive(url, path) };
+    }
+    const extractionDirectory = await mkdtemp(join(tmpdir(), "monog-extract-"));
+    try {
+      await tar.x({ cwd: extractionDirectory, file: archive, strict: true });
+      const source = await projectSourceRoot(extractionDirectory);
+      await writeProjectFiles(source, temporary, settings.projectId, settings.title, engine, sampleArchive);
+    } finally {
+      await rm(extractionDirectory, { recursive: true, force: true });
+    }
+    await rename(temporary, settings.directory);
+    return { path: settings.directory, engineCommit: engine.commit };
+  } catch (error) {
+    await rm(temporary, { recursive: true, force: true });
+    throw error;
+  } finally {
+    await rm(archiveDirectory, { recursive: true, force: true });
+    if (sampleArchiveDirectory) await rm(sampleArchiveDirectory, { recursive: true, force: true });
+  }
+}
