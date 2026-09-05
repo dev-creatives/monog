@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import { createProject, type CreateProjectOptions } from "./project.js";
-import { pathToFileURL } from "node:url";
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 const usage = `Usage: monog new <directory> [options]
 
@@ -48,7 +49,16 @@ async function main(): Promise<void> {
   process.stdout.write(`Engine revision: ${result.engineCommit}\n`);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+function isEntrypoint(entryPath: string | undefined): boolean {
+  if (!entryPath) return false;
+  try {
+    return realpathSync(entryPath) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isEntrypoint(process.argv[1])) {
   main().catch((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(`monog: ${message}\n`);
