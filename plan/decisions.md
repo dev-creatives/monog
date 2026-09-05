@@ -19,18 +19,21 @@
 ## 初期 CLI インターフェース
 
 ```sh
-monog new <directory> [--engine <Gitリビジョン>]
+monog new <directory> [--project-id <id>] [--title <title>] [--engine-version <Gitリビジョン>]
 ```
 
 - `new` は新しいディレクトリを作成するコマンドとする。
 - 既存ディレクトリをプロジェクト化する `init` は、将来必要になった段階で別の意味を保って追加する。初期版には含めない。
 - 生成先が既に存在する場合はエラーにし、既存ファイルを変更しない。
+- `<directory>` はプロジェクトの出力先ディレクトリとする。
+- `--project-id` は `Config.tjs` の `projectID` に設定する内部識別子とする。省略時は `<directory>` の末尾要素を使い、半角英数字・ハイフン・アンダースコア以外を含む場合はエラーにする。
+- `--title` は `Config.tjs` の `System.title` に設定するゲーム表示名とする。省略時は `projectID` を使う。改行とダブルクォートは受け付けない。
 
 ## エンジン取得とバージョン
 
 - エンジンは npm パッケージに同梱せず、公式 GitHub リポジトリ `ShikemokuMK/tyranoscript` から利用者環境へ取得する。
-- `--engine` を省略した場合は、GitHub の `master` 先端を実行時に解決して使う。
-- `--engine` には、GitHubリポジトリでGitが解決できるリビジョン（短縮SHA、完全SHA、タグ、ブランチ名など）を受け付ける。
+- `--engine-version` を省略した場合は、GitHub の `master` 先端を実行時に解決して使う。
+- `--engine-version` には、GitHubリポジトリでGitが解決できるリビジョン（短縮SHA、完全SHA、タグ、ブランチ名など）を受け付ける。
 - 解決した完全 SHA、要求したリビジョン、取得元リポジトリ、生成日時を生成先の `package.json` の `monog` 名前空間に記録する。
 - 初期版では `stable` のような monog 管理の固定エイリアスを提供しない。再現可能な生成には、解決済みの完全SHAを明示指定する。
 
@@ -40,6 +43,27 @@ monog new <directory> [--engine <Gitリビジョン>]
 - 公式サンプルのシナリオ、画像、音声などの素材は含めない。
 - `package.json` は生成するが、初期版では依存関係や npm scripts は追加しない。`private: true` と monog の生成メタデータを記録する。
 - GitHub Pages のワークフロー生成、公開操作の自動化、ローカル開発サーバーは初期版の対象外とする。
+
+### 生成ディレクトリ構造
+
+`monog new <directory>` は、指定先に以下を生成する。`tyrano/` は解決済みGitリビジョンのエンジンディレクトリ全体を配置し、`data/` には起動・Hello Worldに必要なファイルだけを配置する。
+
+```text
+<directory>/
+├── package.json
+├── index.html
+├── tyrano/                         # 解決済みリビジョンのTyranoエンジン一式
+│   └── ...
+└── data/
+    ├── scenario/
+    │   └── first.ks                # Hello Worldを表示する最初のシナリオ
+    └── system/
+        ├── Config.tjs              # projectIDとゲーム表示名を含むプロジェクト設定
+        └── KeyConfig.js            # キー操作設定
+```
+
+- `index.html` はTyranoエンジンと `data/system/KeyConfig.js` を読み込む起動ページとする。
+- `data/bgimage/`、`data/bgm/`、`data/fgimage/`、`data/image/`、`data/sound/` などのアセット用ディレクトリ、および `config.ks`・`title.ks`・`tyrano.ks` を含む公式サンプルシナリオは生成しない。
 
 ## 実装上の前提
 
